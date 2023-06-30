@@ -21,6 +21,7 @@ When you call your script, call using sbatch \<script.sh\> --array= and specify 
 *Step 0: Preprocessing*
 The FHS genotype files were split amongst two consent groups and so required extensive preprocessing to merge them
 
+build_phenoData.Rmd builds the phenotype and pedigree files for FHS 
 step0\_compress.sh takes a list of the files to compress from a mapfile and runs bcftools sort to compress them all
 step0\_index.sh indexes the compressed vcf files
 step0\_merge\_consent\_groups.sh merges the consent groups
