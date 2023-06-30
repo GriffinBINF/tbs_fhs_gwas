@@ -1,0 +1,173 @@
+---
+title: "Make Pheno File"
+author: "Griffin Tibbitts"
+date: '2023-05-19'
+output: html_document
+---
+```{r}
+rm(list=ls())
+```
+
+```{r}
+library(haven)
+library(dplyr)
+library(plotrix)
+library(DescTools)
+```
+```{r}
+phenoPath = "/work/larylab/dbgap/data9"
+```
+
+```{r}
+TBS <- read_sas(paste0(phenoPath, '/trabecular_bone_score_21.sas7bdat'))
+```
+
+```{r}
+
+bmd1_off <- read.table(gzfile('phs000007.v33.pht003096.v4.p14.c1.t_bmdhs_2008_1_0748s.HMB-IRB-MDS.txt.gz'), sep = '\t', header = T)
+```
+
+
+
+
+```{r}
+setwd(phenoPath)
+wkthru1_off <-  read.table(gzfile('phs000007.v33.pht006027.v4.p14.c2.vr_wkthru_ex09_1_1001s.HMB-IRB-NPU-MDS.txt.gz'), sep = '\t', header = T) 
+
+wkthru2_off <- read.table(gzfile('phs000007.v33.pht006027.v4.p14.c1.vr_wkthru_ex09_1_1001s.HMB-IRB-MDS.txt.gz'), sep = '\t', header = T) 
+
+wkthru1_gen3_omni2 <- read.table(gzfile('phs000007.v33.pht006026.v5.p14.c2.vr_wkthru_ex03_3b_1191s.HMB-IRB-NPU-MDS.txt.gz'), sep = '\t', header = T) 
+
+wkthru2_gen3_omni2 <- read.table(gzfile('phs000007.v33.pht006026.v5.p14.c1.vr_wkthru_ex03_3b_1191s.HMB-IRB-MDS.txt.gz'), sep = '\t', header = T) 
+```
+
+```{r}
+cov1 <- rbind(wkthru1_off, wkthru2_off)
+cov2 <- rbind(wkthru1_gen3_omni2, wkthru2_gen3_omni2)
+```
+
+```{r}
+distinct(select(as.data.frame(cov2), IDTYPE))
+```
+
+```{r}
+cov1 <- cov1 %>%
+  select(shareid, IDTYPE, SEX, AGE8, BMI8, HGT8, WGT8) %>%
+  rename(AGE = AGE8, BMI = BMI8, HEIGHT = HGT8, WEIGHT = WGT8) %>%
+  mutate(AGE2 = AGE ** 2) 
+```
+
+```{r}
+cov2 <- cov2 %>%
+  select(shareid, IDTYPE, SEX, AGE2, BMI2, HGT2, WGT2) %>%
+  rename(AGE = AGE2, BMI = BMI2, HEIGHT = HGT2, WEIGHT = WGT2) %>%
+  mutate(AGE2 = AGE ** 2)
+```
+
+```{r}
+covariates <- rbind(cov1, cov2)
+```
+```{r}
+pcs <- read.delim(file='/work/larylab/calcification/calcification/results/.eigenvec')
+```
+```{r}
+pedigree <- read.delim(file='/work/larylab/Griffin_Stuff/Haojie_GWAS/data/kinship/pedigree_v3.ped', sep = ' ')
+```
+
+```{r}
+pheno <- merge(as.data.frame(TBS), covariates, by = 'shareid', all = T) %>%
+  select(-idtype, -exam, -BMI) %>%
+  merge(pcs, by.x = 'shareid', by.y = 'IID', all = T) %>%
+  rename(FID = X.FID, IID = shareid, Cohort = IDTYPE) %>%
+  filter(!is.na(FID), !is.na(IID), !is.na(avg_tbs), !is.na(AGE), !is.na(PC1)) %>%
+  select(FID, IID, avg_tbs, AGE,AGE2,SEX,HEIGHT, WEIGHT, Cohort, PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10) %>% # 4830
+  merge(pedigree, by = 'IID') %>% # 4730 
+  rename(FID = FID.x) %>%
+  select(-FID.y, -sex, fshare, mshare, -twinid) %>%
+  rename(fid = FID, iid = IID, fatid = fshare, matid = mshare, sex = SEX) %>%
+  relocate(fid, .before=iid) %>% relocate(fatid, .after = iid) %>% relocate(matid, .after = fatid) %>% relocate(sex, .after = matid)
+
+ids <- read.table('/work/larylab/Griffin_Stuff/Haojie_GWAS/data/phg000835.v5.MERGED_FHS_SHARE_imputed_HRC1.genotype-calls-vcf/sampleIDs') %>%
+  rename(shareID = V1) %>%
+  mutate(check = 1)
+check_ids <- merge(pheno, ids, by.x  = 'iid', by.y = 'shareID', all.x = T)
+pheno <- filter(check_ids, !is.na(check))
+```
+```{r}
+pheno_male <- pheno %>% filter(sex == 1) #2187
+pheno_female <- pheno %>% filter(sex == 2) #2543
+```
+
+```{r}
+
+Desc(pheno_female$AGE)
+Desc(pheno_female$WEIGHT)
+Desc(pheno_female$HEIGHT)
+Desc(pheno_female$avg_tbs)
+#sd(filter(pheno_female, !is.na(HEIGHT))$HEIGHT)
+```
+```{r}
+
+```
+
+```{r}
+all_mean <- mean(filter(pheno, !is.na(avg_tbs))$avg_tbs)
+male_mean <- mean(pheno_male$avg_tbs) 
+female_mean <- mean(pheno_female$avg_tbs)
+
+all_sd <- sd(filter(pheno, !is.na(avg_tbs))$avg_tbs)
+male_sd <- sd(pheno_male$avg_tbs) 
+female_sd <- sd(pheno_female$avg_tbs)
+```
+```{r}
+all_sd
+```
+
+```{r}
+pheno <- pheno %>% mutate(std_tbs = (avg_tbs - all_mean) / all_sd, .after = sex) 
+pheno_male <- pheno_male %>% mutate(std_tbs = (avg_tbs - male_mean) / male_sd, .after = sex)
+pheno_female <- pheno_female %>% mutate(std_tbs = (avg_tbs - female_mean) / female_sd, .after = sex)
+```
+```{r}
+head(pheno)
+```
+
+```{r}
+write.table(pheno, '/work/larylab/Griffin_Stuff/Haojie_GWAS/data/pheno/AllPhenoData.txt', sep = ' ', row.names = F, quote = F)
+write.table(pheno_male, '/work/larylab/Griffin_Stuff/Haojie_GWAS/data/pheno/MalePhenoData.txt', sep = ' ', row.names = F, quote = F)
+write.table(pheno_female, '/work/larylab/Griffin_Stuff/Haojie_GWAS/data/pheno/FemalePhenoData.txt', sep = ' ', row.names = F, quote = F)
+```
+
+```{r}
+read.delim('/work/larylab/Griffin_Stuff/Haojie_GWAS/data/kinship/chr22.kinship', sep = '\t')
+```
+
+```{r}
+pedigree <- read.csv('/work/larylab/Griffin_Stuff/Haojie_GWAS/data/kinship/share_ped_052517.csv')
+```
+```{r}
+head(pedigree)
+```
+
+```{r}
+pedigree_recode <- pedigree %>%
+  mutate(sex = case_when(sex == 1 ~ 1, sex == 2 ~ 0))
+
+pedigree_recode[is.na(pedigree_recode)] <- 0
+
+
+head(pedigree_recode)
+```
+```{r}
+write.table(pedigree_recode, '/work/larylab/Griffin_Stuff/Haojie_GWAS/data/kinship/pedigree_recode.ped', sep = ' ', row.names = F)
+
+```
+
+```{r}
+all <- read.table('/work/larylab/Griffin_Stuff/Haojie_GWAS/data/pheno/AllPhenoData.txt', header = T)
+```
+
+```{r}
+mean(all$AGE)
+```
+

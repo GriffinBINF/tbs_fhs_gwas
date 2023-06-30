@@ -1,0 +1,58 @@
+---
+title: "Manhattan Plot Test"
+author: "Griffin Tibbitts"
+date: '2023-05-20'
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(manhattan)
+```
+```{r}
+assoc <- read.table(gzfile('/work/larylab/Griffin_Stuff/Haojie_GWAS/results/rvtest_AllSex/All.EUR.TBS.MetaScore.assoc.gz'), header = T)
+```
+
+```{r}
+head(assoc$PVALUE)
+```
+
+```{r}
+prebuild <- data.frame(assoc) %>%
+  rename(chrom = CHROM, pos = POS, p = PVALUE) %>%
+  mutate(y = -log10(as.numeric(p)),
+         chrom = paste0('chr',chrom)) %>%
+  dplyr::select(chrom, pos, y, p) 
+```
+
+```{r}
+head(assoc)
+```
+```{r}
+manhattan(prebuild, build='hg19') +geom_hline(yintercept=-log10(5e-8),color='red')
+```
+
+```{r}
+chr22 <- read.table(gzfile(paste0(resultsPath, 'All.EUR.chr22.MetaScore.assoc.gz')), header = T) %>%
+  rename(CHR = CHROM, BP = POS, P = PVALUE)
+```
+```{r}
+coords <- chr22 %>%
+  dplyr::select(CHR, BP)
+```
+```{r}
+coords <- apply(coords, 1, paste, collapse = ":")
+```
+
+```{r}
+getBM(attributes = c('refsnp_id', 'chr_name', 'chrom_start', 'chrom_end', 'allele'),
+filters = c('chromosomal_region'), 
+values = coords, 
+mart = snpMart)  
+```
+
+```{r}
+manhattan(chr22, annotatePval = 0.05)
+```
+
